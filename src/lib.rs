@@ -16,6 +16,28 @@ const NUM_KEYS: usize = 16;
 // Most Chip-8 programs start at location 0x200
 const START_ADDR: u16 = 0x200;
 
+// Programs may also refer to a group of sprites representing the hexadecimal digits 0 through F.
+// These sprites are 5 bytes long, or 8x5 pixels. The data should be stored in the interpreter area of Chip-8 memory (0x000 to 0x1FF)
+// http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#2.4
+const FONT_SPRITES: [u8; 16 * 5] = [
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+];
+
 pub struct Chip8Emulator {
     v_registers: [u8; NUM_REGS],
     // There is also a 16-bit register called I.
@@ -42,21 +64,30 @@ pub struct Chip8Emulator {
     sound_timer: u8,
 }
 
-impl Chip8Emulator {
-    pub const fn new() -> Self {
+impl Default for Chip8Emulator {
+    fn default() -> Self {
         Self {
-            v_registers: [0; 16],
-            i_register: 0,
+            v_registers: Default::default(),
+            i_register: Default::default(),
+            program_counter: START_ADDR,
             memory: [0; 4096],
-            // TODO: Update this to use `START_ADDR`
-            program_counter: 0,
-            stack: [0; 16],
-            stack_pointer: 0,
+            stack_pointer: Default::default(),
+            stack: Default::default(),
             display: [false; SCREEN_HEIGHT * SCREEN_WIDTH],
-            keyboard: [false; NUM_KEYS],
-            delay_timer: 0,
-            sound_timer: 0,
+            keyboard: Default::default(),
+            delay_timer: Default::default(),
+            sound_timer: Default::default(),
         }
+    }
+}
+
+impl Chip8Emulator {
+    pub fn new() -> Self {
+        let mut emu = Self {
+            ..Default::default()
+        };
+        emu.memory[..(16 * 5)].copy_from_slice(&FONT_SPRITES);
+        emu
     }
 
     const fn read_opcode(&self) -> u16 {
@@ -91,119 +122,165 @@ impl Chip8Emulator {
                 }
                 (0, 0, 0xE, 0) => self.cls(),
                 (0, 0, 0xE, 0xE) => self.ret(),
-                (0x1, _, _, _) => self.jmp(addr),
-                (0x2, _, _, _) => self.call(addr),
-                (0x3, _, _, _) => self.skip(x, byte),
-                (0x8, _, _, 0x4) => self.add_xy(x, y),
+                (1, _, _, _) => self.jmp(addr),
+                (2, _, _, _) => self.call(addr),
+                (3, _, _, _) => self.skip_val_eq(x, byte),
+                (4, _, _, _) => self.skip_val_not_eq(x, byte),
+                (5, _, _, _) => self.skip_registers_eq(x, y),
+                (6, _, _, _) => self.load_register(x, byte),
+                (7, _, _, _) => self.add_to_register(x, byte),
+                (8, _, _, 0) => self.load(x, y),
+                (8, _, _, 1) => self.or(x, y),
+                (8, _, _, 2) => self.and(x, y),
+                (8, _, _, 3) => self.xor(x, y),
+                (8, _, _, 4) => self.add_xy(x, y),
+                (8, _, _, 5) => self.sub_xy(x, y),
+                (8, _, _, 6) => self.shift_right(x),
+                (8, _, _, 7) => self.subn(x, y),
+                (8, _, _, 0xE) => self.shift_left(x),
+                (9, _, _, 0) => self.skip_registers_ne(x, y),
+                (0xA, _, _, _) => self.load_i_reg(addr),
+                (0xB, _, _, _) => self.jump_from(addr),
+                (0xC, _, _, _) => self.rand(x, byte),
                 _ => todo!("opcode {:04x} is not implemented", opcode),
             }
         }
     }
 
-    fn skip(&mut self, x: u8, byte: u8) {
+    fn skip_val_eq(&mut self, x: u8, byte: u8) {
         //  3xkk - SE Vx, byte
         // Skip next instruction if Vx = kk.
         //The interpreter compares register Vx to kk, and if they are equal, increments the program counter by 2.
-        todo!()
+        if self.v_registers[x as usize] == byte {
+            self.program_counter += 2;
+        }
     }
 
-    fn skip_not_eq(&mut self, x: u8, byte: u8) {
+    fn skip_val_not_eq(&mut self, x: u8, byte: u8) {
         // 4xkk - SNE Vx, byte
         // Skip next instruction if Vx != kk.
         // The interpreter compares register Vx to kk, and if they are not equal, increments the program counter by 2.
-        todo!()
+        if self.v_registers[x as usize] != byte {
+            self.program_counter += 2;
+        }
     }
 
-    fn skip_eq_registers(&mut self, x: u8, y: u8) {
+    fn skip_registers_eq(&mut self, x: u8, y: u8) {
         // 5xy0 - SE Vx, Vy
         // Skip next instruction if Vx = Vy.
-
         // The interpreter compares register Vx to register Vy, and if they are equal, increments the program counter by 2.
-        todo!()
+        if self.v_registers[x as usize] == self.v_registers[y as usize] {
+            self.program_counter += 2;
+        }
     }
 
     fn load_register(&mut self, x: u8, byte: u8) {
         // 6xkk - LD Vx, byte
         // Set Vx = kk.
         //The interpreter puts the value kk into register Vx.
-        todo!()
+        self.v_registers[x as usize] = byte;
     }
 
     fn add_to_register(&mut self, x: u8, byte: u8) {
         // 7xkk - ADD Vx, byte
         // Set Vx = Vx + kk.
         // Adds the value kk to the value of register Vx, then stores the result in Vx.
-        todo!()
+        self.v_registers[x as usize] = self.v_registers[x as usize].wrapping_add(byte);
     }
 
     fn load(&mut self, x: u8, y: u8) {
         // 8xy0 - LD Vx, Vy
         // Set Vx = Vy.
         // Stores the value of register Vy in register Vx.
-        todo!()
+        self.v_registers[x as usize] = self.v_registers[y as usize];
     }
 
     fn or(&mut self, x: u8, y: u8) {
         // 8xy1 - OR Vx, Vy
         // Set Vx = Vx OR Vy.
         // Performs a bitwise OR on the values of Vx and Vy, then stores the result in Vx.
-        // A bitwise OR compares the corrseponding bits from two values, and if either bit is 1,
-        // then the same bit in the result is also 1. Otherwise, it is 0.
-        todo!()
+        self.v_registers[x as usize] |= self.v_registers[y as usize];
+    }
+    fn and(&mut self, x: u8, y: u8) {
+        // 8xy2 - AND Vx, Vy
+        // Set Vx = Vx AND Vy.
+        // Performs a bitwise AND on the values of Vx and Vy, then stores the result in Vx.
+        self.v_registers[x as usize] &= self.v_registers[y as usize];
     }
     fn xor(&mut self, x: u8, y: u8) {
         //8xy3 - XOR Vx, Vy
         // Set Vx = Vx XOR Vy.
-        // Performs a bitwise exclusive OR on the values of Vx and Vy, then stores the result in Vx. An exclusive OR compares the corrseponding bits from two values, and if the bits are not both the same, then the corresponding bit in the result is set to 1. Otherwise, it is 0.
-        todo!()
+        // Performs a bitwise exclusive OR on the values of Vx and Vy, then stores the result in Vx.
+        self.v_registers[x as usize] ^= self.v_registers[y as usize];
     }
-    fn sub(&self, x: u8, y: u8) {
+    fn sub_xy(&mut self, x: u8, y: u8) {
         //8xy5 - SUB Vx, Vy
         //Set Vx = Vx - Vy, set VF = NOT borrow.
-
         // If Vx > Vy, then VF is set to 1, otherwise 0. Then Vy is subtracted from Vx, and the results stored in Vx.
-        todo!()
+        let arg1 = self.v_registers[x as usize];
+        let arg2 = self.v_registers[y as usize];
+        let (val, overflow) = arg1.overflowing_sub(arg2);
+        self.v_registers[x as usize] = val;
+        if overflow {
+            self.v_registers[0xF] = 1;
+        } else {
+            self.v_registers[0xF] = 0;
+        }
     }
 
-    fn shr(&mut self, x: u8, y: u8) {
+    fn shift_right(&mut self, x: u8) {
         // 8xy6 - SHR Vx {, Vy}
         // Set Vx = Vx SHR 1.
-        //If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0. Then Vx is divided by 2.
-        todo!()
+        // If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0. Then Vx is divided by 2.
+        let lsb = self.v_registers[x as usize] & 1;
+        self.v_registers[x as usize] >>= 1;
+        self.v_registers[0xF] = lsb;
     }
 
     fn subn(&mut self, x: u8, y: u8) {
         //8xy7 - SUBN Vx, Vy
         //Set Vx = Vy - Vx, set VF = NOT borrow.
         //If Vy > Vx, then VF is set to 1, otherwise 0. Then Vx is subtracted from Vy, and the results stored in Vx.
-        todo!()
+        let arg1 = self.v_registers[x as usize];
+        let arg2 = self.v_registers[y as usize];
+        let (val, overflow) = arg2.overflowing_sub(arg1);
+        self.v_registers[x as usize] = val;
+        if overflow {
+            self.v_registers[0xF] = 1;
+        } else {
+            self.v_registers[0xF] = 0;
+        }
     }
 
-    fn shl(&mut self, x: u8, y: u8) {
+    fn shift_left(&mut self, x: u8) {
         // 8xyE - SHL Vx {, Vy}
         // Set Vx = Vx SHL 1.
         //If the most-significant bit of Vx is 1, then VF is set to 1, otherwise to 0. Then Vx is multiplied by 2.
-        todo!()
+        let msb = (self.v_registers[x as usize] >> 7) & 1;
+        self.v_registers[x as usize] <<= 1;
+        self.v_registers[0xF] = msb;
     }
 
-    fn sne(&mut self, x: u8, y: u8) {
+    fn skip_registers_ne(&mut self, x: u8, y: u8) {
         //9xy0 - SNE Vx, Vy
         //Skip next instruction if Vx != Vy.
         //The values of Vx and Vy are compared, and if they are not equal, the program counter is increased by 2.
-        todo!()
+        if self.v_registers[x as usize] != self.v_registers[y as usize] {
+            self.program_counter += 2;
+        }
     }
 
     fn cls(&mut self) {
         // 00E0 - CLS
         // Clear the display.
-        todo!()
+        self.display = [false; SCREEN_HEIGHT * SCREEN_WIDTH];
     }
 
     fn jmp(&mut self, addr: u16) {
         // 1nnn - JP addr
         // Jump to location nnn.
         //  The interpreter sets the program counter to nnn.
-        todo!()
+        self.program_counter = addr;
     }
 
     fn call(&mut self, addr: u16) {
@@ -237,39 +314,47 @@ impl Chip8Emulator {
         //The values of Vx and Vy are added together. If the result is greater than 8 bits (i.e., > 255,) VF is set to 1, otherwise 0. Only the lowest 8 bits of the result are kept, and stored in Vx.
         let arg1 = self.v_registers[x as usize];
         let arg2 = self.v_registers[y as usize];
-        let (val, overflow_detected) = arg1.overflowing_add(arg2);
+        let (val, overflow) = arg1.overflowing_add(arg2);
         self.v_registers[x as usize] = val;
-        if overflow_detected {
+        if overflow {
             self.v_registers[0xF] = 1;
         } else {
             self.v_registers[0xF] = 0;
         }
     }
-    fn ld_I() {
+    fn load_i_reg(&mut self, addr: u16) {
         // Annn - LD I, addr
         // Set I = nnn.
         // The value of register I is set to nnn.
-        todo!()
+        self.i_register = addr;
     }
 
-    fn jump_from() {
+    fn jump_from(&mut self, addr: u16) {
         // Bnnn - JP V0, addr
         // Jump to location nnn + V0.
         // The program counter is set to nnn plus the value of V0.
-        todo!()
+        self.program_counter = (self.v_registers[0] as u16) + addr;
     }
 
-    fn rand() {
+    fn rand(&mut self, x: u8, byte: u8) {
         // Cxkk - RND Vx, byte
         // Set Vx = random byte AND kk.
-        // The interpreter generates a random number from 0 to 255, which is then ANDed with the value kk. The results are stored in Vx. See instruction 8xy2 for more information on AND.
-        todo!()
+        // The interpreter generates a random number from 0 to 255, which is then ANDed with the value kk.
+        // The results are stored in Vx. See instruction 8xy2 for more information on AND.
+        let r = fastrand::u8(..);
+        self.v_registers[x as usize] = r & byte;
     }
 
     fn display() {
         // Dxyn - DRW Vx, Vy, nibble
         // Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
-        // The interpreter reads n bytes from memory, starting at the address stored in I. These bytes are then displayed as sprites on screen at coordinates (Vx, Vy). Sprites are XORed onto the existing screen. If this causes any pixels to be erased, VF is set to 1, otherwise it is set to 0. If the sprite is positioned so part of it is outside the coordinates of the display, it wraps around to the opposite side of the screen. See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
+        // The interpreter reads n bytes from memory, starting at the address stored in I.
+        // These bytes are then displayed as sprites on screen at coordinates (Vx, Vy).
+        // Sprites are XORed onto the existing screen.
+        // If this causes any pixels to be erased, VF is set to 1, otherwise it is set to 0.
+        // If the sprite is positioned so part of it is outside the coordinates of the display,
+        // it wraps around to the opposite side of the screen.
+        // See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
         todo!()
     }
 
@@ -359,12 +444,12 @@ mod tests {
         cpu.v_registers[1] = 10;
 
         let mem = &mut cpu.memory;
-        mem[0x000] = 0x21;
-        mem[0x001] = 0x00;
-        mem[0x002] = 0x21;
-        mem[0x003] = 0x00;
-        mem[0x004] = 0x00;
-        mem[0x005] = 0x00;
+        mem[START_ADDR as usize] = 0x21;
+        mem[(START_ADDR + 1) as usize] = 0x00;
+        mem[(START_ADDR + 2) as usize] = 0x21;
+        mem[(START_ADDR + 3) as usize] = 0x00;
+        mem[(START_ADDR + 4) as usize] = 0x00;
+        mem[(START_ADDR + 5) as usize] = 0x00;
 
         mem[0x100] = 0x80;
         mem[0x101] = 0x14;
