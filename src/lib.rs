@@ -1,32 +1,74 @@
-struct Chip8Emulator {
-    registers: [u8; 16],
-    position_in_memory: usize,
-    memory: [u8; 4096],
-    stack: [u16; 16],
+//! Implementation of Chip-8 Interpreter based on spec:
+//! http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
+
+const RAM_SIZE: usize = 4096;
+// The original implementation of the Chip-8 language used a 64x32-pixel monochrome display with this format:
+const SCREEN_HEIGHT: usize = 64;
+const SCREEN_WIDTH: usize = 32;
+
+// 16 general purpose 8-bit registers, usually referred to as Vx, where x is a hexadecimal digit (0 through F).
+const NUM_REGS: usize = 16;
+
+const STACK_SIZE: usize = 16;
+// 16-key hexadecimal keypad with the following layout:
+const NUM_KEYS: usize = 16;
+
+// Most Chip-8 programs start at location 0x200
+const START_ADDR: u16 = 0x200;
+
+pub struct Chip8Emulator {
+    v_registers: [u8; NUM_REGS],
+    // There is also a 16-bit register called I.
+    // This register is generally used to store memory addresses, so only the lowest (rightmost) 12 bits are usually used.
+    i_register: u16,
+    // The program counter (PC) should be 16-bit, and is used to store the currently executing address.
+    program_counter: u16,
+    memory: [u8; RAM_SIZE],
+    //The stack pointer (SP) can be 8-bit, it is used to point to the topmost level of the stack.
     stack_pointer: usize,
+    //  The stack is an array of 16 16-bit values, used to store the address that the interpreter shoud return to when
+    // finished with a subroutine. Chip-8 allows for up to 16 levels of nested subroutines.
+    stack: [u16; STACK_SIZE],
+    // Tracks what pixels are on/off
+    display: [bool; SCREEN_HEIGHT * SCREEN_WIDTH],
+    // Tracks which keys are pressed
+    keyboard: [bool; NUM_KEYS],
+    //  The delay timer is active whenever the delay timer register (DT) is non-zero.
+    // This timer does nothing more than subtract 1 from the value of DT at a rate of 60Hz. When DT reaches 0, it deactivates.
+    delay_timer: u8,
+    //  The sound timer is active whenever the sound timer register (ST) is non-zero.
+    // This timer also decrements at a rate of 60Hz, however, as long as ST's value is greater than zero, the Chip-8 buzzer will sound.
+    // When ST reaches zero, the sound timer deactivates.
+    sound_timer: u8,
 }
 
 impl Chip8Emulator {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            registers: [0; 16],
+            v_registers: [0; 16],
+            i_register: 0,
             memory: [0; 4096],
-            position_in_memory: 0,
+            // TODO: Update this to use `START_ADDR`
+            program_counter: 0,
             stack: [0; 16],
             stack_pointer: 0,
+            display: [false; SCREEN_HEIGHT * SCREEN_WIDTH],
+            keyboard: [false; NUM_KEYS],
+            delay_timer: 0,
+            sound_timer: 0,
         }
     }
 
     const fn read_opcode(&self) -> u16 {
-        let op_byte_1 = self.memory[self.position_in_memory] as u16;
-        let op_byte_2 = self.memory[self.position_in_memory + 1] as u16;
+        let op_byte_1 = self.memory[self.program_counter as usize] as u16;
+        let op_byte_2 = self.memory[(self.program_counter + 1) as usize] as u16;
         (op_byte_1 << 8) | op_byte_2
     }
 
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         loop {
             let opcode = self.read_opcode();
-            self.position_in_memory += 2;
+            self.program_counter += 2;
 
             /*
             nnn or addr - A 12-bit value, the lowest 12 bits of the instruction
@@ -41,17 +83,17 @@ impl Chip8Emulator {
             let y = ((opcode & 0x00F0) >> 4) as u8;
             let d = ((opcode & 0x000F) >> 0) as u8;
 
-            let nnn = opcode & 0x0FFF;
-            let kk = (opcode & 0x00FF) as u8;
+            let addr = opcode & 0x0FFF;
+            let byte = (opcode & 0x00FF) as u8;
             match (c, x, y, d) {
                 (0, 0, 0, 0) => {
                     break;
                 }
                 (0, 0, 0xE, 0) => self.cls(),
                 (0, 0, 0xE, 0xE) => self.ret(),
-                (0x1, _, _, _) => self.jmp(nnn),
-                (0x2, _, _, _) => self.call(nnn),
-                (0x3, _, _, _) => self.skip(x, kk),
+                (0x1, _, _, _) => self.jmp(addr),
+                (0x2, _, _, _) => self.call(addr),
+                (0x3, _, _, _) => self.skip(x, byte),
                 (0x8, _, _, 0x4) => self.add_xy(x, y),
                 _ => todo!("opcode {:04x} is not implemented", opcode),
             }
@@ -170,12 +212,12 @@ impl Chip8Emulator {
         // The interpreter increments the stack pointer, then puts the current PC on the top of the stack. The PC is then set to nnn.
         assert!(self.stack_pointer < self.stack.len(), "Stack overflow");
 
-        if let Ok(v) = u16::try_from(self.position_in_memory) {
+        if let Ok(v) = u16::try_from(self.program_counter) {
             self.stack[self.stack_pointer] = v;
             self.stack_pointer += 1;
-            self.position_in_memory = addr as usize;
+            self.program_counter = addr;
         } else {
-            panic!("{} is bigger than u16 can hold", self.position_in_memory);
+            panic!("{} is bigger than u16 can hold", self.program_counter);
         }
     }
 
@@ -186,21 +228,21 @@ impl Chip8Emulator {
         assert!(self.stack_pointer != 0, "Stack underflow");
 
         self.stack_pointer -= 1;
-        self.position_in_memory = self.stack[self.stack_pointer] as usize;
+        self.program_counter = self.stack[self.stack_pointer];
     }
 
     const fn add_xy(&mut self, x: u8, y: u8) {
         // 8xy4 - ADD Vx, Vy
         // Set Vx = Vx + Vy, set VF = carry.
         //The values of Vx and Vy are added together. If the result is greater than 8 bits (i.e., > 255,) VF is set to 1, otherwise 0. Only the lowest 8 bits of the result are kept, and stored in Vx.
-        let arg1 = self.registers[x as usize];
-        let arg2 = self.registers[y as usize];
+        let arg1 = self.v_registers[x as usize];
+        let arg2 = self.v_registers[y as usize];
         let (val, overflow_detected) = arg1.overflowing_add(arg2);
-        self.registers[x as usize] = val;
+        self.v_registers[x as usize] = val;
         if overflow_detected {
-            self.registers[0xF] = 1;
+            self.v_registers[0xF] = 1;
         } else {
-            self.registers[0xF] = 0;
+            self.v_registers[0xF] = 0;
         }
     }
     fn ld_I() {
@@ -313,8 +355,8 @@ mod tests {
     #[test]
     fn it_works() {
         let mut cpu = Chip8Emulator::new();
-        cpu.registers[0] = 5;
-        cpu.registers[1] = 10;
+        cpu.v_registers[0] = 5;
+        cpu.v_registers[1] = 10;
 
         let mem = &mut cpu.memory;
         mem[0x000] = 0x21;
@@ -333,6 +375,6 @@ mod tests {
 
         cpu.run();
 
-        assert_eq!(cpu.registers[0], 45);
+        assert_eq!(cpu.v_registers[0], 45);
     }
 }
