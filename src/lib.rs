@@ -90,6 +90,16 @@ impl Chip8Emulator {
         emu
     }
 
+    pub fn load_data(&mut self, data: &[u8]) {
+        let start = START_ADDR as usize;
+        let end = (START_ADDR as usize) + data.len();
+        self.memory[start..end].copy_from_slice(data);
+    }
+
+    pub fn load_data_range(&mut self, data: &[u8], start_idx: usize) {
+        self.memory[start_idx..start_idx + data.len()].copy_from_slice(data);
+    }
+
     const fn read_opcode(&self) -> u16 {
         let op_byte_1 = self.memory[self.program_counter as usize] as u16;
         let op_byte_2 = self.memory[(self.program_counter + 1) as usize] as u16;
@@ -443,21 +453,19 @@ mod tests {
         cpu.v_registers[0] = 5;
         cpu.v_registers[1] = 10;
 
-        let mem = &mut cpu.memory;
-        mem[START_ADDR as usize] = 0x21;
-        mem[(START_ADDR + 1) as usize] = 0x00;
-        mem[(START_ADDR + 2) as usize] = 0x21;
-        mem[(START_ADDR + 3) as usize] = 0x00;
-        mem[(START_ADDR + 4) as usize] = 0x00;
-        mem[(START_ADDR + 5) as usize] = 0x00;
+        let data: [u8; 6] = [
+            0x21, 0x00, // Call (0x100)
+            0x21, 0x00, // Call (0x100)
+            0x00, 0x00, // End
+        ];
+        cpu.load_data(&data);
 
-        mem[0x100] = 0x80;
-        mem[0x101] = 0x14;
-        mem[0x102] = 0x80;
-        mem[0x103] = 0x14;
-        mem[0x104] = 0x00;
-        mem[0x105] = 0xEE;
-
+        let func_data: [u8; 6] = [
+            0x80, 0x14, // Add(0, 1)
+            0x80, 0x14, // Add(0, 1)
+            0x00, 0xEE, // End
+        ];
+        cpu.load_data_range(&func_data, 0x100);
         cpu.run();
 
         assert_eq!(cpu.v_registers[0], 45);
