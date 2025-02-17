@@ -3,8 +3,8 @@
 
 const RAM_SIZE: usize = 4096;
 // The original implementation of the Chip-8 language used a 64x32-pixel monochrome display with this format:
-const SCREEN_HEIGHT: usize = 64;
-const SCREEN_WIDTH: usize = 32;
+pub const SCREEN_HEIGHT: usize = 32;
+pub const SCREEN_WIDTH: usize = 64;
 
 // 16 general purpose 8-bit registers, usually referred to as Vx, where x is a hexadecimal digit (0 through F).
 const NUM_REGS: usize = 16;
@@ -15,6 +15,8 @@ const NUM_KEYS: usize = 16;
 
 // Most Chip-8 programs start at location 0x200
 const START_ADDR: u16 = 0x200;
+
+const OPCODE_SIZE: u16 = 2;
 
 // Programs may also refer to a group of sprites representing the hexadecimal digits 0 through F.
 // These sprites are 5 bytes long, or 8x5 pixels. The data should be stored in the interpreter area of Chip-8 memory (0x000 to 0x1FF)
@@ -38,6 +40,7 @@ const FONT_SPRITES: [u8; 16 * 5] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
+#[derive(Debug)]
 pub struct Chip8Emulator {
     v_registers: [u8; NUM_REGS],
     // There is also a 16-bit register called I.
@@ -95,77 +98,101 @@ impl Chip8Emulator {
         self.memory[start..end].copy_from_slice(data);
     }
 
-    pub fn load_data_range(&mut self, data: &[u8], start_idx: usize) {
+    fn load_data_range(&mut self, data: &[u8], start_idx: usize) {
         self.memory[start_idx..start_idx + data.len()].copy_from_slice(data);
     }
 
-    const fn read_opcode(&self) -> u16 {
-        let op_byte_1 = self.memory[self.program_counter as usize] as u16;
-        let op_byte_2 = self.memory[(self.program_counter + 1) as usize] as u16;
-        (op_byte_1 << 8) | op_byte_2
+    /// Return the state of the display
+    pub fn get_display(&self) -> &[bool] {
+        &self.display
     }
 
-    pub fn run(&mut self) {
-        loop {
-            let opcode = self.read_opcode();
-            self.program_counter += 2;
+    /// Press a key 0-15
+    pub fn keypress(&mut self, idx: usize, pressed: bool) {
+        debug_assert!(idx < NUM_KEYS, "{idx} is outside bounds");
+        self.keyboard[idx] = pressed;
+    }
 
-            /*
-            nnn or addr - A 12-bit value, the lowest 12 bits of the instruction
-            n or nibble - A 4-bit value, the lowest 4 bits of the instruction
-            x - A 4-bit value, the lower 4 bits of the high byte of the instruction
-            y - A 4-bit value, the upper 4 bits of the low byte of the instruction
-            kk or byte - An 8-bit value, the lowest 8 bits of the instruction
-            */
+    const fn read_opcode(&mut self) -> u16 {
+        let op_byte_1 = self.memory[self.program_counter as usize] as u16;
+        let op_byte_2 = self.memory[(self.program_counter + 1) as usize] as u16;
+        let op_code = (op_byte_1 << 8) | op_byte_2;
+        self.program_counter += OPCODE_SIZE;
+        op_code
+    }
 
-            let c = ((opcode & 0xF000) >> 12) as u8;
-            let x = ((opcode & 0x0F00) >> 8) as u8;
-            let y = ((opcode & 0x00F0) >> 4) as u8;
-            let d = (opcode & 0x000F) as u8;
-
-            let addr = opcode & 0x0FFF;
-            let byte = (opcode & 0x00FF) as u8;
-            match (c, x, y, d) {
-                (0, 0, 0, 0) => {
-                    break;
-                }
-                (0, 0, 0xE, 0) => self.cls(),
-                (0, 0, 0xE, 0xE) => self.ret(),
-                (1, _, _, _) => self.jmp(addr),
-                (2, _, _, _) => self.call(addr),
-                (3, _, _, _) => self.skip_val_eq(x, byte),
-                (4, _, _, _) => self.skip_val_not_eq(x, byte),
-                (5, _, _, _) => self.skip_registers_eq(x, y),
-                (6, _, _, _) => self.load_register(x, byte),
-                (7, _, _, _) => self.add_to_register(x, byte),
-                (8, _, _, 0) => self.load(x, y),
-                (8, _, _, 1) => self.or(x, y),
-                (8, _, _, 2) => self.and(x, y),
-                (8, _, _, 3) => self.xor(x, y),
-                (8, _, _, 4) => self.add_xy(x, y),
-                (8, _, _, 5) => self.sub_xy(x, y),
-                (8, _, _, 6) => self.shift_right(x),
-                (8, _, _, 7) => self.subn(x, y),
-                (8, _, _, 0xE) => self.shift_left(x),
-                (9, _, _, 0) => self.skip_registers_ne(x, y),
-                (0xA, _, _, _) => self.load_i_reg(addr),
-                (0xB, _, _, _) => self.jump_from(addr),
-                (0xC, _, _, _) => self.rand(x, byte),
-                (0xD, _, _, _) => self.display(x, y, d),
-                (0xE, _, 9, 0xE) => self.skip_if_key(x),
-                (0xE, _, 0xA, 1) => self.skip_not_key(x),
-                (0xF, _, 0, 7) => self.set_register_to_delay(x),
-                (0xF, _, 0, 0xA) => self.wait_timer(x),
-                (0xF, _, 1, 5) => self.set_timer(x),
-                (0xF, _, 1, 8) => self.set_sound_timer(x),
-                (0xF, _, 1, 0xE) => self.add_to_i_register(x),
-                (0xF, _, 2, 9) => self.set_i_to_font_addr(x),
-                (0xF, _, 3, 3) => self.store_bcd_encoding(x),
-                (0xF, _, 5, 5) => self.store_registers_at_i(x),
-                (0xF, _, 6, 5) => self.load_registers_from_i_addr(x),
-                _ => todo!("opcode {:04x} is not implemented", opcode),
-            }
+    pub fn tick_timers(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
         }
+        if self.sound_timer > 0 {
+            if self.sound_timer == 1 {
+                // PLAY SOUND
+            }
+            self.sound_timer -= 1;
+        }
+    }
+
+    pub fn tick(&mut self) -> Option<()> {
+        let opcode = self.read_opcode();
+
+        /*
+        nnn or addr - A 12-bit value, the lowest 12 bits of the instruction
+        n or nibble - A 4-bit value, the lowest 4 bits of the instruction
+        x - A 4-bit value, the lower 4 bits of the high byte of the instruction
+        y - A 4-bit value, the upper 4 bits of the low byte of the instruction
+        kk or byte - An 8-bit value, the lowest 8 bits of the instruction
+        */
+
+        let c = ((opcode & 0xF000) >> 12) as u8;
+        let x = ((opcode & 0x0F00) >> 8) as u8;
+        let y = ((opcode & 0x00F0) >> 4) as u8;
+        let d = (opcode & 0x000F) as u8;
+
+        let addr = opcode & 0x0FFF;
+        let byte = (opcode & 0x00FF) as u8;
+
+        match (c, x, y, d) {
+            (0, 0, 0, 0) => {
+                return None;
+            }
+            (0, 0, 0xE, 0) => self.cls(),
+            (0, 0, 0xE, 0xE) => self.ret(),
+            (1, _, _, _) => self.jmp(addr),
+            (2, _, _, _) => self.call(addr),
+            (3, _, _, _) => self.skip_val_eq(x, byte),
+            (4, _, _, _) => self.skip_val_not_eq(x, byte),
+            (5, _, _, _) => self.skip_registers_eq(x, y),
+            (6, _, _, _) => self.load_register(x, byte),
+            (7, _, _, _) => self.add_to_register(x, byte),
+            (8, _, _, 0) => self.load(x, y),
+            (8, _, _, 1) => self.or(x, y),
+            (8, _, _, 2) => self.and(x, y),
+            (8, _, _, 3) => self.xor(x, y),
+            (8, _, _, 4) => self.add_xy(x, y),
+            (8, _, _, 5) => self.sub_xy(x, y),
+            (8, _, _, 6) => self.shift_right(x),
+            (8, _, _, 7) => self.subn(x, y),
+            (8, _, _, 0xE) => self.shift_left(x),
+            (9, _, _, 0) => self.skip_registers_ne(x, y),
+            (0xA, _, _, _) => self.load_i_reg(addr),
+            (0xB, _, _, _) => self.jump_from(addr),
+            (0xC, _, _, _) => self.rand(x, byte),
+            (0xD, _, _, _) => self.display(x, y, d),
+            (0xE, _, 9, 0xE) => self.skip_if_key(x),
+            (0xE, _, 0xA, 1) => self.skip_not_key(x),
+            (0xF, _, 0, 7) => self.set_register_to_delay(x),
+            (0xF, _, 0, 0xA) => self.wait_timer(x),
+            (0xF, _, 1, 5) => self.set_timer(x),
+            (0xF, _, 1, 8) => self.set_sound_timer(x),
+            (0xF, _, 1, 0xE) => self.add_to_i_register(x),
+            (0xF, _, 2, 9) => self.set_i_to_font_addr(x),
+            (0xF, _, 3, 3) => self.store_bcd_encoding(x),
+            (0xF, _, 5, 5) => self.store_registers_at_i(x),
+            (0xF, _, 6, 5) => self.load_registers_from_i_addr(x),
+            _ => todo!("opcode {:04x} is not implemented", opcode),
+        }
+        Some(())
     }
 
     const fn skip_val_eq(&mut self, x: u8, byte: u8) {
@@ -173,7 +200,7 @@ impl Chip8Emulator {
         // Skip next instruction if Vx = kk.
         //The interpreter compares register Vx to kk, and if they are equal, increments the program counter by 2.
         if self.v_registers[x as usize] == byte {
-            self.program_counter += 2;
+            self.program_counter += OPCODE_SIZE;
         }
     }
 
@@ -182,7 +209,7 @@ impl Chip8Emulator {
         // Skip next instruction if Vx != kk.
         // The interpreter compares register Vx to kk, and if they are not equal, increments the program counter by 2.
         if self.v_registers[x as usize] != byte {
-            self.program_counter += 2;
+            self.program_counter += OPCODE_SIZE;
         }
     }
 
@@ -191,7 +218,7 @@ impl Chip8Emulator {
         // Skip next instruction if Vx = Vy.
         // The interpreter compares register Vx to register Vy, and if they are equal, increments the program counter by 2.
         if self.v_registers[x as usize] == self.v_registers[y as usize] {
-            self.program_counter += 2;
+            self.program_counter += OPCODE_SIZE;
         }
     }
 
@@ -287,7 +314,7 @@ impl Chip8Emulator {
         //Skip next instruction if Vx != Vy.
         //The values of Vx and Vy are compared, and if they are not equal, the program counter is increased by 2.
         if self.v_registers[x as usize] != self.v_registers[y as usize] {
-            self.program_counter += 2;
+            self.program_counter += OPCODE_SIZE;
         }
     }
 
@@ -414,7 +441,7 @@ impl Chip8Emulator {
         let vx = self.v_registers[x as usize];
         let key_press = self.keyboard[vx as usize];
         if key_press {
-            self.program_counter += 2;
+            self.program_counter += OPCODE_SIZE;
         }
     }
 
@@ -425,7 +452,7 @@ impl Chip8Emulator {
         let vx = self.v_registers[x as usize];
         let key_press = self.keyboard[vx as usize];
         if !key_press {
-            self.program_counter += 2;
+            self.program_counter += OPCODE_SIZE;
         }
     }
 
@@ -449,7 +476,7 @@ impl Chip8Emulator {
             }
         }
         if !is_pressed {
-            self.program_counter -= 2;
+            self.program_counter -= OPCODE_SIZE;
         }
     }
 
@@ -521,8 +548,6 @@ impl Chip8Emulator {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs::File, io::Read};
-
     use super::*;
 
     #[test]
@@ -544,19 +569,11 @@ mod tests {
             0x00, 0xEE, // End
         ];
         cpu.load_data_range(&func_data, 0x100);
-        cpu.run();
-
+        loop {
+            if cpu.tick().is_none() {
+                break;
+            }
+        }
         assert_eq!(cpu.v_registers[0], 45);
-    }
-
-    // #[test]
-    fn load_rom() {
-        let mut cpu = Chip8Emulator::new();
-        let mut file = File::open("./src/roms/GUESS").expect("Failed to open GUESS file");
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)
-            .expect("Failed to read GUESS file");
-        cpu.load_data(&buffer);
-        cpu.run();
     }
 }
