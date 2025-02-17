@@ -1,5 +1,5 @@
 //! Implementation of Chip-8 Interpreter based on spec:
-//! http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
+//! <http://devernay.free.fr/hacks/chip8/C8TECH10.HTM>
 
 const RAM_SIZE: usize = 4096;
 // The original implementation of the Chip-8 language used a 64x32-pixel monochrome display with this format:
@@ -82,10 +82,9 @@ impl Default for Chip8Emulator {
 }
 
 impl Chip8Emulator {
+    #[must_use]
     pub fn new() -> Self {
-        let mut emu = Self {
-            ..Default::default()
-        };
+        let mut emu: Chip8Emulator = Default::default();
         emu.memory[..(16 * 5)].copy_from_slice(&FONT_SPRITES);
         emu
     }
@@ -122,7 +121,7 @@ impl Chip8Emulator {
             let c = ((opcode & 0xF000) >> 12) as u8;
             let x = ((opcode & 0x0F00) >> 8) as u8;
             let y = ((opcode & 0x00F0) >> 4) as u8;
-            let d = ((opcode & 0x000F) >> 0) as u8;
+            let d = (opcode & 0x000F) as u8;
 
             let addr = opcode & 0x0FFF;
             let byte = (opcode & 0x00FF) as u8;
@@ -152,12 +151,24 @@ impl Chip8Emulator {
                 (0xA, _, _, _) => self.load_i_reg(addr),
                 (0xB, _, _, _) => self.jump_from(addr),
                 (0xC, _, _, _) => self.rand(x, byte),
+                (0xD, _, _, _) => self.display(x, y, d),
+                (0xE, _, 9, 0xE) => self.skip_if_key(x),
+                (0xE, _, 0xA, 1) => self.skip_not_key(x),
+                (0xF, _, 0, 7) => self.set_register_to_delay(x),
+                (0xF, _, 0, 0xA) => self.wait_timer(x),
+                (0xF, _, 1, 5) => self.set_timer(x),
+                (0xF, _, 1, 8) => self.set_sound_timer(x),
+                (0xF, _, 1, 0xE) => self.add_to_i_register(x),
+                (0xF, _, 2, 9) => self.set_i_to_font_addr(x),
+                (0xF, _, 3, 3) => self.store_bcd_encoding(x),
+                (0xF, _, 5, 5) => self.store_registers_at_i(x),
+                (0xF, _, 6, 5) => self.load_registers_from_i_addr(x),
                 _ => todo!("opcode {:04x} is not implemented", opcode),
             }
         }
     }
 
-    fn skip_val_eq(&mut self, x: u8, byte: u8) {
+    const fn skip_val_eq(&mut self, x: u8, byte: u8) {
         //  3xkk - SE Vx, byte
         // Skip next instruction if Vx = kk.
         //The interpreter compares register Vx to kk, and if they are equal, increments the program counter by 2.
@@ -166,7 +177,7 @@ impl Chip8Emulator {
         }
     }
 
-    fn skip_val_not_eq(&mut self, x: u8, byte: u8) {
+    const fn skip_val_not_eq(&mut self, x: u8, byte: u8) {
         // 4xkk - SNE Vx, byte
         // Skip next instruction if Vx != kk.
         // The interpreter compares register Vx to kk, and if they are not equal, increments the program counter by 2.
@@ -175,7 +186,7 @@ impl Chip8Emulator {
         }
     }
 
-    fn skip_registers_eq(&mut self, x: u8, y: u8) {
+    const fn skip_registers_eq(&mut self, x: u8, y: u8) {
         // 5xy0 - SE Vx, Vy
         // Skip next instruction if Vx = Vy.
         // The interpreter compares register Vx to register Vy, and if they are equal, increments the program counter by 2.
@@ -184,46 +195,46 @@ impl Chip8Emulator {
         }
     }
 
-    fn load_register(&mut self, x: u8, byte: u8) {
+    const fn load_register(&mut self, x: u8, byte: u8) {
         // 6xkk - LD Vx, byte
         // Set Vx = kk.
         //The interpreter puts the value kk into register Vx.
         self.v_registers[x as usize] = byte;
     }
 
-    fn add_to_register(&mut self, x: u8, byte: u8) {
+    const fn add_to_register(&mut self, x: u8, byte: u8) {
         // 7xkk - ADD Vx, byte
         // Set Vx = Vx + kk.
         // Adds the value kk to the value of register Vx, then stores the result in Vx.
         self.v_registers[x as usize] = self.v_registers[x as usize].wrapping_add(byte);
     }
 
-    fn load(&mut self, x: u8, y: u8) {
+    const fn load(&mut self, x: u8, y: u8) {
         // 8xy0 - LD Vx, Vy
         // Set Vx = Vy.
         // Stores the value of register Vy in register Vx.
         self.v_registers[x as usize] = self.v_registers[y as usize];
     }
 
-    fn or(&mut self, x: u8, y: u8) {
+    const fn or(&mut self, x: u8, y: u8) {
         // 8xy1 - OR Vx, Vy
         // Set Vx = Vx OR Vy.
         // Performs a bitwise OR on the values of Vx and Vy, then stores the result in Vx.
         self.v_registers[x as usize] |= self.v_registers[y as usize];
     }
-    fn and(&mut self, x: u8, y: u8) {
+    const fn and(&mut self, x: u8, y: u8) {
         // 8xy2 - AND Vx, Vy
         // Set Vx = Vx AND Vy.
         // Performs a bitwise AND on the values of Vx and Vy, then stores the result in Vx.
         self.v_registers[x as usize] &= self.v_registers[y as usize];
     }
-    fn xor(&mut self, x: u8, y: u8) {
+    const fn xor(&mut self, x: u8, y: u8) {
         //8xy3 - XOR Vx, Vy
         // Set Vx = Vx XOR Vy.
         // Performs a bitwise exclusive OR on the values of Vx and Vy, then stores the result in Vx.
         self.v_registers[x as usize] ^= self.v_registers[y as usize];
     }
-    fn sub_xy(&mut self, x: u8, y: u8) {
+    const fn sub_xy(&mut self, x: u8, y: u8) {
         //8xy5 - SUB Vx, Vy
         //Set Vx = Vx - Vy, set VF = NOT borrow.
         // If Vx > Vy, then VF is set to 1, otherwise 0. Then Vy is subtracted from Vx, and the results stored in Vx.
@@ -238,7 +249,7 @@ impl Chip8Emulator {
         }
     }
 
-    fn shift_right(&mut self, x: u8) {
+    const fn shift_right(&mut self, x: u8) {
         // 8xy6 - SHR Vx {, Vy}
         // Set Vx = Vx SHR 1.
         // If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0. Then Vx is divided by 2.
@@ -247,7 +258,7 @@ impl Chip8Emulator {
         self.v_registers[0xF] = lsb;
     }
 
-    fn subn(&mut self, x: u8, y: u8) {
+    const fn subn(&mut self, x: u8, y: u8) {
         //8xy7 - SUBN Vx, Vy
         //Set Vx = Vy - Vx, set VF = NOT borrow.
         //If Vy > Vx, then VF is set to 1, otherwise 0. Then Vx is subtracted from Vy, and the results stored in Vx.
@@ -262,7 +273,7 @@ impl Chip8Emulator {
         }
     }
 
-    fn shift_left(&mut self, x: u8) {
+    const fn shift_left(&mut self, x: u8) {
         // 8xyE - SHL Vx {, Vy}
         // Set Vx = Vx SHL 1.
         //If the most-significant bit of Vx is 1, then VF is set to 1, otherwise to 0. Then Vx is multiplied by 2.
@@ -271,7 +282,7 @@ impl Chip8Emulator {
         self.v_registers[0xF] = msb;
     }
 
-    fn skip_registers_ne(&mut self, x: u8, y: u8) {
+    const fn skip_registers_ne(&mut self, x: u8, y: u8) {
         //9xy0 - SNE Vx, Vy
         //Skip next instruction if Vx != Vy.
         //The values of Vx and Vy are compared, and if they are not equal, the program counter is increased by 2.
@@ -280,13 +291,13 @@ impl Chip8Emulator {
         }
     }
 
-    fn cls(&mut self) {
+    const fn cls(&mut self) {
         // 00E0 - CLS
         // Clear the display.
         self.display = [false; SCREEN_HEIGHT * SCREEN_WIDTH];
     }
 
-    fn jmp(&mut self, addr: u16) {
+    const fn jmp(&mut self, addr: u16) {
         // 1nnn - JP addr
         // Jump to location nnn.
         //  The interpreter sets the program counter to nnn.
@@ -299,13 +310,9 @@ impl Chip8Emulator {
         // The interpreter increments the stack pointer, then puts the current PC on the top of the stack. The PC is then set to nnn.
         assert!(self.stack_pointer < self.stack.len(), "Stack overflow");
 
-        if let Ok(v) = u16::try_from(self.program_counter) {
-            self.stack[self.stack_pointer] = v;
-            self.stack_pointer += 1;
-            self.program_counter = addr;
-        } else {
-            panic!("{} is bigger than u16 can hold", self.program_counter);
-        }
+        self.stack[self.stack_pointer] = self.program_counter;
+        self.stack_pointer += 1;
+        self.program_counter = addr;
     }
 
     fn ret(&mut self) {
@@ -332,14 +339,14 @@ impl Chip8Emulator {
             self.v_registers[0xF] = 0;
         }
     }
-    fn load_i_reg(&mut self, addr: u16) {
+    const fn load_i_reg(&mut self, addr: u16) {
         // Annn - LD I, addr
         // Set I = nnn.
         // The value of register I is set to nnn.
         self.i_register = addr;
     }
 
-    fn jump_from(&mut self, addr: u16) {
+    const fn jump_from(&mut self, addr: u16) {
         // Bnnn - JP V0, addr
         // Jump to location nnn + V0.
         // The program counter is set to nnn plus the value of V0.
@@ -355,7 +362,7 @@ impl Chip8Emulator {
         self.v_registers[x as usize] = r & byte;
     }
 
-    fn display() {
+    fn display(&mut self, x: u8, y: u8, d: u8) {
         // Dxyn - DRW Vx, Vy, nibble
         // Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
         // The interpreter reads n bytes from memory, starting at the address stored in I.
@@ -365,86 +372,157 @@ impl Chip8Emulator {
         // If the sprite is positioned so part of it is outside the coordinates of the display,
         // it wraps around to the opposite side of the screen.
         // See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
-        todo!()
+
+        // Implementation based on: <https://aquova.net/emudev/chip8/5-instr.html>
+        let x_coord = self.v_registers[x as usize] as u16;
+        let y_coord = self.v_registers[y as usize] as u16;
+
+        let num_rows = d as u16;
+        let mut flipped = false;
+        // Iterate over each row of our sprite
+        for y_line in 0..num_rows {
+            // Determine which memory address our row's data is stored
+            let addr = self.i_register + y_line;
+            let pixels = self.memory[addr as usize];
+            // Iterate over each column in our row
+            for x_line in 0..8 {
+                // Use a mask to fetch current pixel's bit. Only flip if a 1
+                if (pixels & (0b1000_0000 >> x_line)) != 0 {
+                    // Sprites should wrap around screen, so apply modulo
+                    let x = (x_coord + x_line) as usize % SCREEN_WIDTH;
+                    let y = (y_coord + y_line) as usize % SCREEN_HEIGHT;
+                    // Get our pixel's index for our 1D screen array
+                    let idx = x + SCREEN_WIDTH * y;
+                    // Check if we're about to flip the pixel and set
+                    flipped |= self.display[idx];
+                    self.display[idx] ^= true;
+                }
+            }
+        }
+        // Populate VF register
+        if flipped {
+            self.v_registers[0xF] = 1;
+        } else {
+            self.v_registers[0xF] = 0;
+        }
     }
 
-    fn skip_if_key() {
+    const fn skip_if_key(&mut self, x: u8) {
         // Ex9E - SKP Vx
         // Skip next instruction if key with the value of Vx is pressed.
         // Checks the keyboard, and if the key corresponding to the value of Vx is currently in the down position, PC is increased by 2.
-        todo!()
+        let vx = self.v_registers[x as usize];
+        let key_press = self.keyboard[vx as usize];
+        if key_press {
+            self.program_counter += 2;
+        }
     }
 
-    fn skip_not_key() {
+    const fn skip_not_key(&mut self, x: u8) {
         // ExA1 - SKNP Vx
         // Skip next instruction if key with the value of Vx is not pressed.
         // Checks the keyboard, and if the key corresponding to the value of Vx is currently in the up position, PC is increased by 2.
-        todo!()
+        let vx = self.v_registers[x as usize];
+        let key_press = self.keyboard[vx as usize];
+        if !key_press {
+            self.program_counter += 2;
+        }
     }
 
-    fn set_delay() {
+    const fn set_register_to_delay(&mut self, x: u8) {
         // Fx07 - LD Vx, DT
         // Set Vx = delay timer value.
         // The value of DT is placed into Vx.
-        todo!()
+        self.v_registers[x as usize] = self.delay_timer;
     }
 
-    fn wait_timer() {
+    fn wait_timer(&mut self, x: u8) {
         // Fx0A - LD Vx, K
         // Wait for a key press, store the value of the key in Vx.
         // All execution stops until a key is pressed, then the value of that key is stored in Vx.
-        todo!()
+        let mut is_pressed = false;
+        for (idx, pressed) in self.keyboard.iter().enumerate() {
+            if *pressed {
+                self.v_registers[x as usize] = idx as u8;
+                is_pressed = true;
+                break;
+            }
+        }
+        if !is_pressed {
+            self.program_counter -= 2;
+        }
     }
 
-    fn set_timer() {
+    const fn set_timer(&mut self, x: u8) {
         // Fx15 - LD DT, Vx
         // Set delay timer = Vx.
         // DT is set equal to the value of Vx.
-        todo!()
+        self.delay_timer = self.v_registers[x as usize];
     }
 
-    fn set_sound_timer() {
+    const fn set_sound_timer(&mut self, x: u8) {
         // Fx18 - LD ST, Vx
         // Set sound timer = Vx.
         // ST is set equal to the value of Vx.
-        todo!()
+        self.sound_timer = self.v_registers[x as usize];
     }
 
-    fn add_register() {
+    const fn add_to_i_register(&mut self, x: u8) {
         // Fx1E - ADD I, Vx
         // Set I = I + Vx.
         // The values of I and Vx are added, and the results are stored in I.
-        todo!()
+        self.i_register += self.v_registers[x as usize] as u16;
     }
 
-    fn fx29() {
+    const fn set_i_to_font_addr(&mut self, x: u8) {
         // Fx29 - LD F, Vx
         // Set I = location of sprite for digit Vx.
-        // The value of I is set to the location for the hexadecimal sprite corresponding to the value of Vx. See section 2.4, Display, for more information on the Chip-8 hexadecimal font.
-        todo!()
+        // The value of I is set to the location for the hexadecimal sprite corresponding to the value of Vx.
+        // See section 2.4, Display, for more information on the Chip-8 hexadecimal font.
+        let char = self.v_registers[x as usize] as u16;
+        // Every hex char is 5 bytes
+        self.i_register = char * 5;
     }
 
-    fn fx33() {
+    fn store_bcd_encoding(&mut self, x: u8) {
         // Fx33 - LD B, Vx
         // Store BCD representation of Vx in memory locations I, I+1, and I+2.
-        // The interpreter takes the decimal value of Vx, and places the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.
+        // The interpreter takes the decimal value of Vx, and places the hundreds digit in memory at location in I,
+        // the tens digit at location I+1, and the ones digit at location I+2.
+        // https://en.wikipedia.org/wiki/Binary-coded_decimal
+        let vx = self.v_registers[x as usize] as f64;
+
+        let hundredths = (vx / 100.0).floor() as u8;
+        let tenths = ((vx / 10.0) % 10.0).floor() as u8;
+        let ones = (vx % 1.0).floor() as u8;
+
+        self.load_data_range(&[hundredths, tenths, ones], self.i_register as usize);
     }
 
-    fn fx55() {
+    fn store_registers_at_i(&mut self, x: u8) {
         // Fx55 - LD [I], Vx
         // Store registers V0 through Vx in memory starting at location I.
         // The interpreter copies the values of registers V0 through Vx into memory, starting at the address in I.
+        let i_addr = self.i_register as usize;
+        for offset in 0..=x as usize {
+            self.memory[i_addr + offset] = self.v_registers[x as usize];
+        }
     }
 
-    fn fx65() {
+    fn load_registers_from_i_addr(&mut self, x: u8) {
         // Fx65 - LD Vx, [I]
         // Read registers V0 through Vx from memory starting at location I.
         // The interpreter reads values from memory starting at location I into registers V0 through Vx.
+        for reg_idx in 0..=x as usize {
+            self.v_registers[reg_idx] = self.memory[self.i_register as usize + reg_idx];
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{fs::File, io::Read};
+
     use super::*;
 
     #[test]
@@ -469,5 +547,16 @@ mod tests {
         cpu.run();
 
         assert_eq!(cpu.v_registers[0], 45);
+    }
+
+    // #[test]
+    fn load_rom() {
+        let mut cpu = Chip8Emulator::new();
+        let mut file = File::open("./src/roms/GUESS").expect("Failed to open GUESS file");
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .expect("Failed to read GUESS file");
+        cpu.load_data(&buffer);
+        cpu.run();
     }
 }
