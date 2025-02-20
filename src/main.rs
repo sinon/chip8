@@ -9,15 +9,15 @@ use clap::Parser;
 use clap::Subcommand;
 use itertools::Itertools;
 use ratatui::{
-    DefaultTerminal, Frame,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     layout::{Constraint, Layout, Position, Rect},
     style::Color,
     symbols::Marker,
     widgets::{
-        Block, Widget,
         canvas::{Canvas, Points},
+        Block, Widget,
     },
+    DefaultTerminal, Frame,
 };
 
 #[derive(Parser, Debug)]
