@@ -116,6 +116,10 @@ impl Chip8Emulator {
         self.keyboard[idx] = pressed;
     }
 
+    pub fn clear_keys(&mut self) {
+        self.keyboard = [false; NUM_KEYS];
+    }
+
     const fn read_opcode(&mut self) -> u16 {
         let op_byte_1 = self.memory[self.program_counter as usize] as u16;
         let op_byte_2 = self.memory[(self.program_counter + 1) as usize] as u16;
