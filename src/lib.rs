@@ -89,7 +89,7 @@ impl Default for Chip8Emulator {
 impl Chip8Emulator {
     #[must_use]
     pub fn new() -> Self {
-        let mut emu: Chip8Emulator = Default::default();
+        let mut emu: Self = Default::default();
         emu.memory[..(16 * 5)].copy_from_slice(&FONT_SPRITES);
         emu
     }
@@ -105,7 +105,8 @@ impl Chip8Emulator {
     }
 
     /// Return the state of the display
-    pub fn get_display(&self) -> &[bool] {
+    #[must_use]
+    pub const fn get_display(&self) -> &[bool] {
         &self.display
     }
 
@@ -123,7 +124,7 @@ impl Chip8Emulator {
         op_code
     }
 
-    pub fn tick_timers(&mut self) {
+    pub const fn tick_timers(&mut self) {
         if self.delay_timer > 0 {
             self.delay_timer -= 1;
         }
@@ -406,7 +407,7 @@ impl Chip8Emulator {
         let x_coord = self.v_registers[x as usize] as u16;
         let y_coord = self.v_registers[y as usize] as u16;
 
-        let num_rows = d as u16;
+        let num_rows = u16::from(d);
         let mut flipped = false;
         // Iterate over each row of our sprite
         for y_line in 0..num_rows {
@@ -580,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn load_rom() {
+    fn load_rom_pong() {
         let mut cpu = Chip8Emulator::new();
         let bytes = include_bytes!("./roms/PONG");
         cpu.load_data(bytes);
@@ -589,6 +590,37 @@ mod tests {
             if cpu.tick().is_none() {
                 break;
             }
+            cpu.tick_timers();
+            counter += 1;
+        }
+    }
+
+    #[test]
+    fn load_rom_guess() {
+        let mut cpu = Chip8Emulator::new();
+        let bytes = include_bytes!("./roms/GUESS");
+        cpu.load_data(bytes);
+        let mut counter = 0;
+        while counter < 10000 {
+            if cpu.tick().is_none() {
+                break;
+            }
+            cpu.tick_timers();
+            counter += 1;
+        }
+    }
+
+    #[test]
+    fn load_rom_maze() {
+        let mut cpu = Chip8Emulator::new();
+        let bytes = include_bytes!("./roms/MAZE");
+        cpu.load_data(bytes);
+        let mut counter = 0;
+        while counter < 10000 {
+            if cpu.tick().is_none() {
+                break;
+            }
+            cpu.tick_timers();
             counter += 1;
         }
     }
