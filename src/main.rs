@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::{self, Read},
-    time::Duration,
-};
+use std::{io, time::Duration};
 
 use chip8::{Chip8Emulator, SCREEN_WIDTH};
 use clap::Parser;
@@ -27,7 +23,7 @@ struct Args {
     commands: Commands,
 }
 #[derive(Subcommand, Debug)]
-enum Commands {
+pub enum Commands {
     Pong,
     Guess,
     Maze,
@@ -41,25 +37,24 @@ pub struct App {
 }
 
 fn main() -> io::Result<()> {
-    let file_name = match Args::parse().commands {
-        Commands::Pong => "PONG",
-        Commands::Guess => "GUESS",
-        Commands::Maze => "MAZE",
-    };
+    let command = Args::parse().commands;
     let mut terminal = ratatui::init();
-    let app_result = App::new(file_name).run(&mut terminal);
+    let app_result = App::new(command).run(&mut terminal);
     ratatui::restore();
     app_result
 }
 
 impl App {
-    pub fn new(file_name: &str) -> Self {
+    pub fn new(command: Commands) -> Self {
+        let pong = include_bytes!("./roms/PONG");
+        let guess = include_bytes!("./roms/GUESS");
+        let maze = include_bytes!("./roms/MAZE");
         let mut emulator = Chip8Emulator::new();
-        let mut file = File::open(format!("./src/roms/{file_name}")).expect("Failed to open file");
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)
-            .expect("Failed to read GUESS file");
-        emulator.load_data(&buffer);
+        match command {
+            Commands::Pong => emulator.load_data(pong),
+            Commands::Guess => emulator.load_data(guess),
+            Commands::Maze => emulator.load_data(maze),
+        }
         App {
             emulator,
             exit: false,
