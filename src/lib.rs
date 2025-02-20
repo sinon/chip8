@@ -1,6 +1,8 @@
 //! Implementation of Chip-8 Interpreter based on spec:
 //! <http://devernay.free.fr/hacks/chip8/C8TECH10.HTM>
 
+#![no_std]
+
 const RAM_SIZE: usize = 4096;
 // The original implementation of the Chip-8 language used a 64x32-pixel monochrome display with this format:
 pub const SCREEN_HEIGHT: usize = 32;

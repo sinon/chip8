@@ -2,6 +2,7 @@
 name = "chip8"
 version = "0.1.0"
 edition = "2024"
+categories = ["no-std"]
 
 [dependencies]
 clap = { version = "4.5.30", features = ["derive"] }
