@@ -72,9 +72,9 @@ impl App {
         while !self.exit {
             for _ in 0..10 {
                 self.emulator.tick();
+                self.calculate_points();
             }
             self.emulator.tick_timers();
-            self.calculate_points();
             self.handle_events()?;
             terminal.draw(|frame| self.draw(frame))?;
         }
@@ -88,7 +88,7 @@ impl App {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        if event::poll(Duration::from_millis(10))? {
+        if event::poll(Duration::from_millis(16))? {
             match event::read()? {
                 Event::Key(key_event) => {
                     let pressed = if key_event.kind == KeyEventKind::Press {
