@@ -578,4 +578,18 @@ mod tests {
         }
         assert_eq!(cpu.v_registers[0], 45);
     }
+
+    #[test]
+    fn load_rom() {
+        let mut cpu = Chip8Emulator::new();
+        let bytes = include_bytes!("./roms/PONG");
+        cpu.load_data(bytes);
+        let mut counter = 0;
+        while counter < 10000 {
+            if cpu.tick().is_none() {
+                break;
+            }
+            counter += 1;
+        }
+    }
 }
