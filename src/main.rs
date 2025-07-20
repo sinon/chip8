@@ -1,3 +1,5 @@
+#![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+
 use std::{io, time::Duration};
 
 use chip8::{Chip8Emulator, SCREEN_WIDTH};
@@ -7,15 +9,15 @@ use itertools::Itertools;
 use ratatui::crossterm::event::KeyboardEnhancementFlags;
 use ratatui::crossterm::event::PushKeyboardEnhancementFlags;
 use ratatui::{
+    DefaultTerminal, Frame,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     layout::{Constraint, Layout, Position, Rect},
     style::Color,
     symbols::Marker,
     widgets::{
-        canvas::{Canvas, Points},
         Block, Widget,
+        canvas::{Canvas, Points},
     },
-    DefaultTerminal, Frame,
 };
 
 #[derive(Parser, Debug)]
@@ -45,13 +47,14 @@ fn main() -> io::Result<()> {
         io::stderr(),
         PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
     )?;
-    let app_result = App::new(command).run(&mut terminal);
+    let app_result = App::new(&command).run(&mut terminal);
     ratatui::restore();
     app_result
 }
 
 impl App {
-    pub fn new(command: Commands) -> Self {
+    #[must_use]
+    pub fn new(command: &Commands) -> Self {
         let pong = include_bytes!("./roms/PONG");
         let guess = include_bytes!("./roms/GUESS");
         let maze = include_bytes!("./roms/MAZE");
@@ -61,13 +64,15 @@ impl App {
             Commands::Guess => emulator.load_data(guess),
             Commands::Maze => emulator.load_data(maze),
         }
-        App {
+        Self {
             emulator,
             exit: false,
             points: vec![],
         }
     }
-
+    /// # Errors
+    /// - reading events
+    /// - fails to draw state to terminal
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {
             for _ in 0..10 {
@@ -89,17 +94,10 @@ impl App {
 
     fn handle_events(&mut self) -> io::Result<()> {
         if event::poll(Duration::from_millis(16))? {
-            match event::read()? {
-                Event::Key(key_event) => {
-                    let pressed = if key_event.kind == KeyEventKind::Press {
-                        true
-                    } else {
-                        false
-                    };
-                    self.handle_key_event(key_event, pressed)
-                }
-                _ => {}
-            };
+            if let Event::Key(key_event) = event::read()? {
+                let pressed = key_event.kind == KeyEventKind::Press;
+                self.handle_key_event(key_event, pressed);
+            }
         }
         Ok(())
     }
@@ -112,18 +110,18 @@ impl App {
             KeyCode::Char('2') => Some(0x2),
             KeyCode::Char('3') => Some(0x3),
             KeyCode::Char('4') => Some(0xC),
-            KeyCode::Char('q') | KeyCode::Char('Q') => Some(0x4),
-            KeyCode::Char('w') | KeyCode::Char('W') => Some(0x5),
-            KeyCode::Char('e') | KeyCode::Char('E') => Some(0x6),
-            KeyCode::Char('r') | KeyCode::Char('R') => Some(0xD),
-            KeyCode::Char('a') | KeyCode::Char('A') => Some(0x7),
-            KeyCode::Char('s') | KeyCode::Char('S') => Some(0x8),
-            KeyCode::Char('d') | KeyCode::Char('D') => Some(0x9),
-            KeyCode::Char('f') | KeyCode::Char('F') => Some(0xE),
-            KeyCode::Char('z') | KeyCode::Char('Z') => Some(0xA),
-            KeyCode::Char('x') | KeyCode::Char('X') => Some(0x0),
-            KeyCode::Char('c') | KeyCode::Char('C') => Some(0xB),
-            KeyCode::Char('v') | KeyCode::Char('V') => Some(0xB),
+            KeyCode::Char('q' | 'Q') => Some(0x4),
+            KeyCode::Char('w' | 'W') => Some(0x5),
+            KeyCode::Char('e' | 'E') => Some(0x6),
+            KeyCode::Char('r' | 'R') => Some(0xD),
+            KeyCode::Char('a' | 'A') => Some(0x7),
+            KeyCode::Char('s' | 'S') => Some(0x8),
+            KeyCode::Char('d' | 'D') => Some(0x9),
+            KeyCode::Char('f' | 'F') => Some(0xE),
+            KeyCode::Char('z' | 'Z') => Some(0xA),
+            KeyCode::Char('x' | 'X') => Some(0x0),
+            KeyCode::Char('c' | 'C') => Some(0xB),
+            KeyCode::Char('v' | 'V') => Some(0xF),
             _ => None,
         };
 
@@ -132,7 +130,7 @@ impl App {
         }
     }
 
-    fn exit(&mut self) {
+    const fn exit(&mut self) {
         self.exit = true;
     }
 

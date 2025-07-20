@@ -12,6 +12,3 @@ test:
     cargo nextest run --all-targets --no-fail-fast
 
 t:test
-
-lox_run:build
-    cargo run run test.lox 

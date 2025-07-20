@@ -2,6 +2,7 @@
 //! <http://devernay.free.fr/hacks/chip8/C8TECH10.HTM>
 
 #![no_std]
+#![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
 const RAM_SIZE: usize = 4096;
 // The original implementation of the Chip-8 language used a 64x32-pixel monochrome display with this format:
@@ -89,7 +90,7 @@ impl Default for Chip8Emulator {
 impl Chip8Emulator {
     #[must_use]
     pub fn new() -> Self {
-        let mut emu: Self = Default::default();
+        let mut emu: Self = Self::default();
         emu.memory[..(16 * 5)].copy_from_slice(&FONT_SPRITES);
         emu
     }
@@ -404,8 +405,8 @@ impl Chip8Emulator {
         // See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
 
         // Implementation based on: <https://aquova.net/emudev/chip8/5-instr.html>
-        let x_coord = self.v_registers[x as usize] as u16;
-        let y_coord = self.v_registers[y as usize] as u16;
+        let x_coord = u16::from(self.v_registers[x as usize]);
+        let y_coord = u16::from(self.v_registers[y as usize]);
 
         let num_rows = u16::from(d);
         let mut flipped = false;
@@ -520,7 +521,7 @@ impl Chip8Emulator {
         // The interpreter takes the decimal value of Vx, and places the hundreds digit in memory at location in I,
         // the tens digit at location I+1, and the ones digit at location I+2.
         // https://en.wikipedia.org/wiki/Binary-coded_decimal
-        let vx = self.v_registers[x as usize] as f64;
+        let vx = f64::from(self.v_registers[x as usize]);
 
         let hundredths = (vx / 100.0).floor() as u8;
         let tenths = ((vx / 10.0) % 10.0).floor() as u8;
