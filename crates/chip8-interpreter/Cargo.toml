@@ -4,5 +4,13 @@ version = "0.1.0"
 edition = "2024"
 categories = ["no-std"]
 
+[features]
+default = []
+rustler = ["dep:rustler"]
+
 [dependencies]
 fastrand = "2.3.0"
+rustler = { version = "0.36.2", optional = true }
+
+[lib]
+crate-type = ["dylib"]

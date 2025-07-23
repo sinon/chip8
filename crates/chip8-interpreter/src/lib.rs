@@ -87,6 +87,13 @@ impl Default for Chip8Emulator {
     }
 }
 
+#[cfg(feature = "rustler")]
+impl rustler::Resource for Chip8Emulator {}
+
+#[cfg(feature = "rustler")]
+#[rustler::resource_impl]
+impl Chip8Emulator {}
+
 impl Chip8Emulator {
     #[must_use]
     pub fn new() -> Self {
