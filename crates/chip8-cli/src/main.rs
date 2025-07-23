@@ -2,7 +2,7 @@
 
 use std::{io, time::Duration};
 
-use chip8::{Chip8Emulator, SCREEN_WIDTH};
+use chip8_interpreter::{Chip8Emulator, SCREEN_WIDTH};
 use clap::Parser;
 use clap::Subcommand;
 use itertools::Itertools;
@@ -55,9 +55,9 @@ fn main() -> io::Result<()> {
 impl App {
     #[must_use]
     pub fn new(command: &Commands) -> Self {
-        let pong = include_bytes!("./roms/PONG");
-        let guess = include_bytes!("./roms/GUESS");
-        let maze = include_bytes!("./roms/MAZE");
+        let pong = include_bytes!("../../roms/PONG");
+        let guess = include_bytes!("../../roms/GUESS");
+        let maze = include_bytes!("../../roms/MAZE");
         let mut emulator = Chip8Emulator::new();
         match command {
             Commands::Pong => emulator.load_data(pong),

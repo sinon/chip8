@@ -1,15 +1,11 @@
-[package]
-name = "chip8"
-version = "0.1.0"
+[workspace]
+members = ["crates/chip8-interpreter", "crates/chip8-cli"]
+resolver = "2"
+
+[workspace.package]
+authors = ["Rob Hand <146272+sinon@users.noreply.github.com>"]
+version = "0.0.1"
 edition = "2024"
-categories = ["no-std"]
-
-[dependencies]
-clap = { version = "4.5.30", features = ["derive"] }
-fastrand = "2.3.0"
-itertools = "0.14.0"
-ratatui = "0.29.0"
-
-
-[[bin]]
-name = "chip8"
+license = "MIT"
+homepage = "https://github.com/sinon/chip8"
+repository = "https://github.com/sinon/chip8"
