@@ -1,0 +1,10 @@
+[package]
+name = "chip8-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.30", features = ["derive"] }
+itertools = "0.14.0"
+ratatui = "0.29.0"
+chip8-interpreter = { path = "../chip8-interpreter" }

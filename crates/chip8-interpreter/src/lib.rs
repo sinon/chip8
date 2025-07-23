@@ -584,7 +584,7 @@ mod tests {
     #[test]
     fn load_rom_pong() {
         let mut cpu = Chip8Emulator::new();
-        let bytes = include_bytes!("./roms/PONG");
+        let bytes = include_bytes!("../../roms/PONG");
         cpu.load_data(bytes);
         let mut counter = 0;
         while counter < 10000 {
@@ -599,7 +599,7 @@ mod tests {
     #[test]
     fn load_rom_guess() {
         let mut cpu = Chip8Emulator::new();
-        let bytes = include_bytes!("./roms/GUESS");
+        let bytes = include_bytes!("../../roms/GUESS");
         cpu.load_data(bytes);
         let mut counter = 0;
         while counter < 10000 {
@@ -614,7 +614,7 @@ mod tests {
     #[test]
     fn load_rom_maze() {
         let mut cpu = Chip8Emulator::new();
-        let bytes = include_bytes!("./roms/MAZE");
+        let bytes = include_bytes!("../../roms/MAZE");
         cpu.load_data(bytes);
         let mut counter = 0;
         while counter < 10000 {
