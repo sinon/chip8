@@ -13,4 +13,4 @@ fastrand = "2.3.0"
 rustler = { version = "0.36.2", optional = true }
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["lib", "dylib"]
