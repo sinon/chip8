@@ -1,0 +1,10 @@
+-module(libchip8_interpreter).
+-export([Chip8Emulator/0]).
+-nifs([Chip8Emulator/0]).
+-on_load(init/0).
+
+init() ->
+    ok = erlang:load_nif("priv/libchip8_interpreter", 0).
+
+truly_random() ->
+    exit(nif_library_not_loaded).

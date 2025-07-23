@@ -44,3 +44,17 @@ jobs:
           fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  test_gleam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27.1.2"
+          gleam-version: "1.11.1"
+          rebar3-version: "3"
+          # elixir-version: "1"
+      - run: cd ui
+      - run: gleam deps download
+      - run: gleam test
+      - run: gleam format --check src test
