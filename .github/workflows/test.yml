@@ -54,7 +54,9 @@ jobs:
           gleam-version: "1.11.1"
           rebar3-version: "3"
           # elixir-version: "1"
-      - run: cd ui
       - run: gleam deps download
+        working-directory: ./ui
       - run: gleam test
+        working-directory: ./ui
       - run: gleam format --check src test
+        working-directory: ./ui
