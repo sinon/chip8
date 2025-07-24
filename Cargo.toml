@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/chip8-interpreter", "crates/chip8-cli"]
+members = ["crates/chip8-interpreter", "crates/chip8-cli", "crates/frontend"]
 resolver = "2"
 
 [workspace.package]

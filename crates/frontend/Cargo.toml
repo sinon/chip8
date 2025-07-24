@@ -1,0 +1,12 @@
+[package]
+name = "frontend"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+yew = { version = "0.21.0", features = ["csr"] }
+chip8-interpreter = { path = "../chip8-interpreter" }

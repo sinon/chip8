@@ -4,6 +4,8 @@
 #![no_std]
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
+use core::fmt;
+
 const RAM_SIZE: usize = 4096;
 // The original implementation of the Chip-8 language used a 64x32-pixel monochrome display with this format:
 pub const SCREEN_HEIGHT: usize = 32;
@@ -93,6 +95,19 @@ impl rustler::Resource for Chip8Emulator {}
 #[cfg(feature = "rustler")]
 #[rustler::resource_impl]
 impl Chip8Emulator {}
+
+impl fmt::Display for Chip8Emulator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for line in self.display.as_slice().chunks(SCREEN_WIDTH) {
+            for &segment in line {
+                let symbol = if segment == true { '◻' } else { '◼' };
+                write!(f, "{}", symbol)?;
+            }
+            write!(f, "\n")?;
+        }
+        Ok(())
+    }
+}
 
 impl Chip8Emulator {
     #[must_use]
